@@ -48,6 +48,10 @@
 #include <unistd.h>
 #include <utility>
 
+#ifdef __ANDROID__
+#include <sched.h>
+#endif
+
 #ifndef IFNAMSIZ
 #define IFNAMSIZ 16
 #endif
@@ -223,11 +227,17 @@ LinuxEthernetTap::LinuxEthernetTap(
 			if (pinning) {
 				int pinCore = i % concurrency;
 				fprintf(stderr, "Pinning tap thread %d to core %d\n", i, pinCore);
-				pthread_t self = pthread_self();
 				cpu_set_t cpuset;
 				CPU_ZERO(&cpuset);
 				CPU_SET(pinCore, &cpuset);
+#ifdef __ANDROID__
+				pid_t self = gettid();
+				int ok = sched_setaffinity(self, sizeof(cpu_set_t), &cpuset);
+				int rc = ok ? 0 : -errno;
+#else
+				pthread_t self = pthread_self();
 				int rc = pthread_setaffinity_np(self, sizeof(cpu_set_t), &cpuset);
+#endif
 				if (rc != 0) {
 					fprintf(stderr, "Failed to pin tap thread %d to core %d: %s\n", i, pinCore, strerror(errno));
 					exit(1);
